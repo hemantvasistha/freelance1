@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Client data — never commit a ledger database or generated invoices
+*.db
+*.db-wal
+*.db-shm
+generated_invoices/
+
+# Secrets
+.env
+!.env.example
+
+# Tooling and OS noise
+.pytest_cache/
+.freebuff/
+.idea/
+.vscode/
+*.log
+Thumbs.db
+.DS_Store
+
+# Local scratch files from smoke runs
+_smoke*

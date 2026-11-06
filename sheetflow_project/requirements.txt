@@ -1,0 +1,15 @@
+# Core API
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+
+# PDF rendering.
+# WeasyPrint is the primary renderer and needs GTK/pango native libraries
+# (Linux: apt install libpango; Windows: GTK3 runtime). When those are missing,
+# src/billing/pdf_generator.py automatically falls back to the ReportLab renderer,
+# which is pure Python and always installs.
+weasyprint>=61
+reportlab>=4.0
+
+# TestClient dependency (tests/test_integration_all.py)
+httpx>=0.27

@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local state — never commit a client ledger database or generated invoices
+*.db
+*.db-wal
+*.db-shm
+generated_invoices/
+
+# Secrets
+.env
+!.env.example

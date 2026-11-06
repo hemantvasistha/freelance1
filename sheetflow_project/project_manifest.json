@@ -1,0 +1,131 @@
+{
+  "project_name": "sheetflow-engine",
+  "version": "1.1.1",
+  "created_at": "2026-11-06T10:19:49+05:30",
+  "last_updated": "2026-11-06T18:30:00+05:30",
+  "active_phase": "REVENUE_READY",
+  "next_up": "M5_FIRST_PAYING_CLIENT",
+  "context_protocol": {
+    "read_order": [
+      "PROJECT_CONTEXT.md",
+      "project_manifest.json",
+      "DATA_MODEL.md",
+      "CHANGELOG.md",
+      "README.md",
+      "OFFER.md"
+    ],
+    "mandatory_update_on_exit": [
+      "PROJECT_CONTEXT.md",
+      "project_manifest.json",
+      "CHANGELOG.md"
+    ]
+  },
+  "setup": {
+    "python": "3.11+ (verified on 3.14.7)",
+    "venv": "py -m venv .venv",
+    "install": ".venv/Scripts/python.exe -m pip install -r requirements.txt",
+    "run_tests": "python sheetflow_engine.py --self-test",
+    "run_server": "python sheetflow_engine.py --serve --port 8000",
+    "onboard_client": "python sheetflow_engine.py --create-tenant --tenant-id tnt_x --business-name \"Acme\" --home-state Maharashtra --sheet-id <google_sheet_id> --public-base-url https://billing.example.com",
+    "list_clients": "python sheetflow_engine.py --list-tenants",
+    "run_daily": "python sheetflow_engine.py --run-daily",
+    "run_digest": "python sheetflow_engine.py --run-digest",
+    "job_intake": "python sheetflow_engine.py --jobs-scan && python sheetflow_engine.py --jobs-list",
+    "retry_failed_email": "python sheetflow_engine.py --retry-failed",
+    "test_count": 38
+  },
+  "milestones": [
+    {
+      "id": "M0_CONTEXT_AND_SPECS",
+      "title": "Product Requirements, Data Model & AI Context Persistence Pack",
+      "status": "completed",
+      "files": [
+        "PRD.md",
+        "PROJECT_CONTEXT.md",
+        "DATA_MODEL.md",
+        "project_manifest.json",
+        "CHANGELOG.md",
+        "README.md",
+        "OFFER.md"
+      ],
+      "verification_cmd": "ls README.md OFFER.md DATA_MODEL.md PROJECT_CONTEXT.md project_manifest.json CHANGELOG.md"
+    },
+    {
+      "id": "M1_CORE_SCHEMA_AND_CONFIG",
+      "title": "SQLite ORM Models, Pydantic v2 Schemas & Deterministic Tax Engine",
+      "status": "completed",
+      "files": [
+        "src/config.py",
+        "src/database.py",
+        "src/models.py",
+        "src/schemas.py"
+      ],
+      "verification_cmd": "python -m unittest tests.test_block1_core -v"
+    },
+    {
+      "id": "M2_PDF_AND_PAYMENT_LINKS",
+      "title": "Branded HTML-to-PDF Invoice Renderer & UPI QR / Payment Link Generator",
+      "status": "completed",
+      "files": [
+        "src/billing/pdf_generator.py",
+        "src/billing/payment_links.py"
+      ],
+      "verification_cmd": "python -m unittest tests.test_block2_billing -v"
+    },
+    {
+      "id": "M3_GOOGLE_SHEETS_BRIDGE",
+      "title": "Google Apps Script Menu Trigger & FastAPI Ingestion Webhook",
+      "status": "completed",
+      "files": [
+        "apps_script/Code.gs",
+        "src/ingestion/sheet_sync.py",
+        "src/main.py"
+      ],
+      "verification_cmd": "python -m unittest tests.test_block3_ingestion -v"
+    },
+    {
+      "id": "M4_DUNNING_AND_RECONCILIATION",
+      "title": "Automated Reminder Cadence (T-3, T+0, T+7) & Payment Webhook Reconciliation",
+      "status": "completed",
+      "files": [
+        "src/dunning/scheduler.py",
+        "src/reconciliation/webhooks.py"
+      ],
+      "verification_cmd": "python -m unittest tests.test_block4_dunning_recon -v"
+    },
+    {
+      "id": "M5_FIRST_PAYING_CLIENT",
+      "title": "Deploy, onboard one real business and collect the setup fee",
+      "status": "next_up",
+      "files": [
+        "sheetflow_engine.py",
+        "src/onboarding.py",
+        "src/notifications/mailer.py",
+        "apps_script/Code.gs",
+        "OFFER.md"
+      ],
+      "verification_cmd": "python sheetflow_engine.py --list-tenants",
+      "notes": [
+        "Sell one thing: GST invoice PDFs + UPI payment link + automatic reminders. OFFER.md has the price, pitch and objections.",
+        "Email delivery is implemented (DRY_RUN recording by default; SmtpMailer when DRY_RUN=false and SMTP_PASSWORD is set). WhatsApp is NOT implemented, do not promise it.",
+        "Invoice PDFs are served at GET /api/v1/invoices/{tenant_id}/{invoice_number}/pdf?token=<hmac>; set SHEETFLOW_PUBLIC_BASE_URL or the sheet receives a useless local path.",
+        "Unattended runs: --run-daily / --run-digest for cron, or SHEETFLOW_SCHEDULER_ENABLED=true for the in-process loop.",
+        "Razorpay is integrated (webhook + optional hosted links); it stays UPI-only until RAZORPAY_* env vars are set.",
+        "Job intake reads only official feeds (Freelancer public API + RSS) and requires --jobs-approve; there is no auto-bidding.",
+        "A FAILED email is retried on the next daily run and via --retry-failed, capped at 3 attempts, without re-sending anything already delivered."
+      ]
+    },
+    {
+      "id": "M6_UNATTENDED_AND_INTAKE",
+      "title": "Daily runner, weekly digest delivery, Razorpay reconciliation, compliant job intake",
+      "status": "completed",
+      "files": [
+        "src/dunning/runner.py",
+        "src/reconciliation/razorpay.py",
+        "src/jobs/intake.py",
+        "src/jobs/store.py"
+      ],
+      "verification_cmd": "python -m pytest tests/test_scheduler_runner.py tests/test_razorpay.py tests/test_job_intake.py -q"
+    }
+  ]
+}
