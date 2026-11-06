@@ -8,6 +8,7 @@ the documented backup procedure is not trustworthy.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sqlite3
@@ -60,6 +61,32 @@ def hot_backup(source: str, destination: str) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Execute a backup/restore drill")
+    parser.add_argument(
+        "--source-db",
+        default="",
+        help="drill an existing database (e.g. a live deployment) instead of a synthetic one",
+    )
+    args = parser.parse_args()
+
+    if args.source_db:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_db = os.path.join(tmp, "backup.db")
+            restored_db = os.path.join(tmp, "restored.db")
+            before = snapshot(args.source_db)
+            hot_backup(args.source_db, backup_db)
+            hot_backup(backup_db, restored_db)
+            after = snapshot(restored_db)
+            report = {
+                "source": args.source_db,
+                "backup_bytes": os.path.getsize(backup_db),
+                "before": before,
+                "restored": after,
+                "match": before == after,
+            }
+            print(json.dumps(report, indent=2))
+            return 0 if before == after else 1
+
     with tempfile.TemporaryDirectory() as tmp:
         live_db = os.path.join(tmp, "clients.db")
         backup_db = os.path.join(tmp, "clients-backup.db")

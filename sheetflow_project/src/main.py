@@ -1,5 +1,6 @@
 """Unified FastAPI Server & CLI Orchestrator combining Blocks 1, 2, 3, and 4."""
 import argparse
+import html
 import asyncio
 import contextlib
 import hmac
@@ -11,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from src.billing.document_links import verify_invoice_pdf_token
@@ -181,10 +182,34 @@ def require_operator_tenant(request: Request) -> TenantRecord:
 
 
 @app.get("/", include_in_schema=False)
-def landing_page() -> FileResponse:
+def landing_page() -> HTMLResponse:
+    """Serves the landing page with this deployment's real contact address.
+
+    The HTML ships with a marker instead of an address, so publishing it without
+    configuring SHEETFLOW_OWNER_EMAIL cannot show a prospective customer a placeholder
+    mailbox that nobody reads.
+    """
     if not SITE_INDEX.exists():
         raise HTTPException(status_code=404, detail="Landing page is not installed.")
-    return FileResponse(SITE_INDEX, media_type="text/html")
+    support_email = os.environ.get("SHEETFLOW_OWNER_EMAIL", "").strip()
+    if support_email:
+        contact = (
+            "<p>Email "
+            f'<a href="mailto:{html.escape(support_email)}?subject=SheetFlow%20walkthrough">'
+            f"{html.escape(support_email)}</a>"
+            " with the subject “SheetFlow walkthrough”, or reply to any message from us.</p>"
+        )
+    else:
+        contact = "<p>Contact details are given in your onboarding email.</p>"
+
+    text = SITE_INDEX.read_text(encoding="utf-8")
+    start_marker = "<!--CONTACT_BLOCK_START-->"
+    end_marker = "<!--CONTACT_BLOCK_END-->"
+    start = text.find(start_marker)
+    end = text.find(end_marker)
+    if start != -1 and end != -1:
+        text = text[:start] + contact + text[end + len(end_marker):]
+    return HTMLResponse(text)
 
 
 @app.get("/health")

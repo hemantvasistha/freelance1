@@ -116,14 +116,29 @@ the client.
 
 ```bash
 curl -s https://billing.example.com/health
-# unsigned sheet webhook must be rejected
+# an empty body is rejected by request validation before auth runs
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://billing.example.com/api/v1/webhooks/sheet-row-ready \
-  -H "Content-Type: application/json" -d '{}'          # expect 401
+  -H "Content-Type: application/json" -d '{}'          # expect 422
+# a well-formed row with a bad signature must be refused
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://billing.example.com/api/v1/webhooks/sheet-row-ready \
+  -H "Content-Type: application/json" -H "X-SheetFlow-Signature: $(printf '0%.0s' {1..64})" \
+  -d '{"tenant_id":"x","sheet_row_number":2,"invoice_number":"INV-1","client_name":"c","client_email":"c@example.com","client_state":"MH","item_description":"d","subtotal_major":"100.00","tax_rate_pct":"18.00","issue_date":"2026-11-06","due_date":"2026-11-13","status":"READY_TO_BILL"}'   # expect 401
 # operator endpoint without a token must be closed
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://billing.example.com/api/v1/dunning/run \
   -H "Content-Type: application/json" -d '{"tenant_id":"x","as_of_date":"2026-01-01"}'   # expect 401
 # a real invoice PDF link must open, and must fail without its token
 ```
+
+Better than curls by hand, run the whole list at once:
+
+```bash
+py scripts/verify_deployment.py --base-url https://billing.example.com \
+  --admin-token "$SHEETFLOW_ADMIN_TOKEN" --operator-token "$OPERATOR_TOKEN" \
+  --webhook-secret "$WEBHOOK_SECRET" --tenant tnt_client01
+```
+
+It prints each check as PASS / BLOCKED / FAIL and exits non-zero on any FAIL. `BLOCKED`
+means a credential is genuinely missing (live email, Razorpay) - not that the check passed.
 
 ## Known limits at this size
 

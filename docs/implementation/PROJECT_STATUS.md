@@ -92,9 +92,36 @@ See `BLOCKERS` section below; all are external, none are code gaps.
   with partial payments, digest duplicate suppression, production config guard,
   measured load harness, status documentation.
 
+## Pre-deployment verification (executed 2026-11-06)
+
+`scripts/verify_deployment.py` runs the customer path and every authorization boundary
+against a live origin and prints PASS / BLOCKED / FAIL with a non-zero exit on failure.
+It was run against a **production-configured local instance**:
+`SHEETFLOW_ENV=production`, `DRY_RUN=false`, real 43-char admin token, real per-tenant
+operator token, no SMTP password.
+
+Result: **14 passed, 3 blocked, 0 failed**, 0 HTTP 5xx in the server log.
+
+Passed: landing page, unsigned webhook 401, forged signature 401, malformed body 422,
+operator endpoint 401, manual payment without admin token 401, signed row creates invoice
+(`delivery=SKIPPED` honestly reported), replay idempotent, PDF 401 without token and a
+real 23,979-byte `%PDF-` with token, manual payment marks PAID, write-back queued and
+acknowledged, owner ops view with real aggregates.
+
+Blocked (credential-gated, not failures): TLS termination (served over plain HTTP),
+live email delivery, Razorpay webhook signature (secret unset).
+
+Two real defects were found and fixed by this run: the landing page shipped a
+`hello@example.com` contact placeholder (it now renders `SHEETFLOW_OWNER_EMAIL`, or an
+honest onboarding fallback), and `deploy/README.md` told operators to expect 401 where
+the API correctly returns 422 for a malformed body.
+
+Production preflight was also exercised: `SHEETFLOW_ENV=production` with an empty public
+base URL and admin token exits with code 2 and names both problems.
+
 ## Next exact task
 
-Deploy to a VPS with Caddy and run the live verification list in
-`docs/OWNER_OPERATIONS.md`, then execute one real Apps Script round trip. That is the
-shortest path from `VERIFIED_IN_TEST` to `PRODUCTION_VERIFIED`, and it needs credentials
-this environment does not hold.
+Provision a host + domain, install Caddy, and run `scripts/verify_deployment.py` against
+the HTTPS origin - then repeat it after each deploy. The code is deployable today; what is
+missing is the host, the DNS record, and the SMTP/Razorpay credentials. `caddy` is not
+installed on this workstation, so TLS itself has never been exercised here.
