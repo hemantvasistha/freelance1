@@ -6,6 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 InvoiceStatus = Literal["DRAFT", "READY_TO_BILL", "SENT", "OVERDUE", "PAID", "CANCELLED"]
+
+# Currencies this build can bill in. Anything else is refused at onboarding rather
+# than producing an invoice whose formatting and payment rails were never tested.
+SUPPORTED_CURRENCIES = ("INR", "USD", "EUR", "GBP", "AED", "SGD")
 ReminderStage = Literal["NONE", "T_MINUS_3", "T_ZERO", "T_PLUS_7"]
 
 
@@ -160,3 +164,6 @@ class PaymentWebhookPayload(BaseModel):
     amount_paid_minor: int = Field(..., gt=0)
     paid_at_iso: str
     signature: str
+    # Optional so older gateways keep working, but when present it must match the
+    # tenant's billing currency.
+    currency: str | None = None

@@ -64,6 +64,13 @@ def verify_and_reconcile_payment(
     if not inv:
         raise ValueError(f"Invoice '{payload.invoice_number}' not found.")
 
+    expected_currency = (tenant.currency_code or "INR").upper()
+    provided_currency = (payload.currency or expected_currency).upper()
+    if provided_currency != expected_currency:
+        raise ValueError(
+            f"Currency mismatch: invoice is {expected_currency}, payment claims {provided_currency}."
+        )
+
     if payload.amount_paid_minor < inv.total_minor:
         raise ValueError(
             f"Underpayment rejected: expected {inv.total_minor} minor units, got {payload.amount_paid_minor}."

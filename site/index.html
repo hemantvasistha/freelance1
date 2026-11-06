@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SheetFlow — invoices and payment chasers for spreadsheet businesses</title>
+<meta name="description" content="Turn invoice rows you already keep in Google Sheets into GST-correct PDF invoices with a tap-to-pay UPI link, and let the reminders chase themselves.">
+<style>
+  :root {
+    --ink: #14181f;
+    --muted: #5b6675;
+    --line: #e3e7ee;
+    --brand: #1652f0;
+    --bg: #ffffff;
+    --soft: #f6f8fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  .wrap { width: min(960px, 92vw); margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .logo { font-weight: 700; letter-spacing: -0.01em; }
+  .logo span { color: var(--brand); }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 20px; font-size: 14px; }
+  nav a:hover { color: var(--ink); }
+  h1 { font-size: clamp(28px, 4.6vw, 44px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 16px; }
+  h2 { font-size: 22px; letter-spacing: -0.01em; margin: 0 0 14px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p.lead { font-size: 18px; color: var(--muted); margin: 0 0 26px; max-width: 62ch; }
+  .hero { padding: 64px 0 48px; }
+  .btn {
+    display: inline-block; padding: 12px 20px; border-radius: 8px;
+    background: var(--brand); color: #fff; text-decoration: none; font-weight: 600;
+  }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); margin-left: 8px; }
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 20px; background: #fff; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+  ol.steps li { counter-increment: s; padding-left: 44px; position: relative; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 0;
+    width: 28px; height: 28px; border-radius: 50%; background: var(--soft);
+    display: grid; place-items: center; font-weight: 700; font-size: 14px; color: var(--brand);
+  }
+  ol.steps strong { display: block; }
+  ol.steps span { color: var(--muted); font-size: 15px; }
+  .price { border: 1px solid var(--line); border-radius: 10px; padding: 24px; background: var(--soft); }
+  .price .amount { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+  .price .amount small { font-size: 15px; font-weight: 400; color: var(--muted); }
+  ul.plain { padding-left: 18px; margin: 12px 0 0; color: var(--muted); font-size: 15px; }
+  ul.plain li { margin-bottom: 6px; }
+  .note { background: #fff8e6; border: 1px solid #f0dca8; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #6b5216; }
+  footer { padding: 36px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">Sheet<span>Flow</span></div>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#limits">Limits</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <h1>Your invoice sheet, with a payment chaser built in.</h1>
+  <p class="lead">
+    SheetFlow reads the invoice rows you already keep in Google Sheets and turns each one
+    into a GST-correct PDF invoice with a tap-to-pay UPI link — then reminds the customer
+    before and after the due date, on its own.
+  </p>
+  <a class="btn" href="#contact">Book a walkthrough</a>
+  <a class="btn ghost" href="#how">See how it works</a>
+</div>
+
+<section id="who">
+  <div class="wrap">
+    <h2>Who this is for</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Coaching centres &amp; tuition classes</h3>
+        <p>Fees due on the 5th, chased by phone every month. You already have the list in a sheet.</p>
+      </div>
+      <div class="card">
+        <h3>Clinics and consultants</h3>
+        <p>Monthly patient or client billing, where the reminder takes longer than the invoice.</p>
+      </div>
+      <div class="card">
+        <h3>Distributors &amp; small agencies</h3>
+        <p>40–200 party invoices a month, all in Excel, and a ledger that drifts from reality.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li><strong>Keep billing in your sheet.</strong>
+        <span>One tab, one row per invoice — the same columns you use today (16 fixed columns are documented before setup).</span></li>
+      <li><strong>Set the row to READY_TO_BILL and run the menu.</strong>
+        <span>A menu item in your own sheet sends that row to SheetFlow.</span></li>
+      <li><strong>Get a PDF and a payment link.</strong>
+        <span>The verified total, the payment link and a signed PDF link are written back into the row. The invoice is emailed to your customer.</span></li>
+      <li><strong>Let the reminders run.</strong>
+        <span>A courtesy note before the due date, a due-date note, and an overdue note after — each sent once per stage, recorded in an audit log.</span></li>
+      <li><strong>See payments land.</strong>
+        <span>When a payment is confirmed, the row is updated to PAID with the date and reference. You get a Monday summary.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <h2>Pricing</h2>
+    <div class="grid">
+      <div class="price">
+        <div class="amount">₹999 <small>/ month</small></div>
+        <ul class="plain">
+          <li>One business, one workbook</li>
+          <li>Unlimited invoices</li>
+          <li>PDF + UPI payment link on every invoice</li>
+          <li>Automated reminders and Monday summary</li>
+          <li>Email support</li>
+        </ul>
+      </div>
+      <div class="price">
+        <div class="amount">₹2,000 <small>one-time setup</small></div>
+        <ul class="plain">
+          <li>Sheet wired to your ledger</li>
+          <li>GSTIN, state and UPI configured</li>
+          <li>One 30-minute setup call</li>
+          <li>First invoice produced live, before you pay</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:18px;color:var(--muted);font-size:15px;">
+      Billed monthly, cancel any time by email. No annual lock-in. Pricing shown is the
+      current offer and may change for new customers after the pilot period.
+    </p>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <h2>What it does not do</h2>
+    <div class="note">
+      Being explicit here saves us both a wasted call.
+    </div>
+    <ul class="plain">
+      <li><strong>No WhatsApp reminders.</strong> Email and the sheet only.</li>
+      <li><strong>No automatic bank matching.</strong> UPI payments are confirmed manually or through your payment gateway's webhook.</li>
+      <li><strong>No Tally export, no accounting entries.</strong> It invoices and chases; it is not bookkeeping software.</li>
+      <li><strong>Not a statutory GST filing tool.</strong> Tax is split correctly for intra-state (CGST+SGST) and inter-state (IGST) at one rate per invoice. It does not handle HSN codes, credit notes or composition schemes.</li>
+      <li><strong>Not a multi-user platform.</strong> One business per workspace, and your data stays in your own Google Sheet.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="contact">
+  <div class="wrap">
+    <h2>Book a walkthrough</h2>
+    <p class="lead" style="margin-bottom:14px;">
+      A 15-minute call where we open your sheet, produce one real invoice and send it —
+      before you pay anything. If it does not fit how you bill, say so and we stop there.
+    </p>
+    <p>
+      Email <a href="mailto:hello@example.com?subject=SheetFlow%20walkthrough">hello@example.com</a>
+      with the subject “SheetFlow walkthrough”, or reply to any message from us.
+    </p>
+    <p style="color:var(--muted);font-size:14px;">
+      Replace the address above with the real support address before publishing this page.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    SheetFlow — invoicing and payment follow-up for businesses that bill from a spreadsheet.
+    Data stays in your Google Sheet; payment links point at your own UPI ID.
+  </div>
+</footer>
+
+</body>
+</html>

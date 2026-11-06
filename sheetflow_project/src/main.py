@@ -5,6 +5,7 @@ import contextlib
 import hmac
 import logging
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import AsyncIterator
@@ -45,6 +46,10 @@ from src.schemas import PaymentWebhookPayload, SheetRowWebhookPayload
 
 
 logger = logging.getLogger("sheetflow.scheduler")
+
+# The public landing page ships with the app so the product and its sales page are
+# deployed as one artifact instead of two places to keep in sync.
+SITE_INDEX = Path(__file__).resolve().parents[2] / "site" / "index.html"
 
 
 async def _scheduler_loop() -> None:
@@ -164,6 +169,13 @@ def require_operator_tenant(request: Request) -> TenantRecord:
     if not tenant:
         raise HTTPException(status_code=401, detail="Invalid operator token.")
     return tenant
+
+
+@app.get("/", include_in_schema=False)
+def landing_page() -> FileResponse:
+    if not SITE_INDEX.exists():
+        raise HTTPException(status_code=404, detail="Landing page is not installed.")
+    return FileResponse(SITE_INDEX, media_type="text/html")
 
 
 @app.get("/health")
@@ -429,6 +441,58 @@ def api_operator_sheet_ack(
     with get_db_connection(settings.db_path) as conn:
         acknowledged = outbox.acknowledge(conn, tenant.id, req.ids)
     return {"tenant_id": tenant.id, "acknowledged": acknowledged}
+
+
+@app.get("/api/v1/admin/ops", dependencies=[Depends(require_admin_token)])
+def api_owner_ops() -> dict:
+    """Exception-focused operating view for the owner.
+
+    Deliberately not an analytics dashboard: every number here either confirms the
+    books agree or tells the owner something needs attention.
+    """
+    settings = get_settings()
+    with get_db_connection(settings.db_path) as conn:
+        active_tenants = conn.execute(
+            "SELECT COUNT(*) AS n FROM tenants WHERE is_active = 1"
+        ).fetchone()["n"]
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS n, COALESCE(SUM(total_minor), 0) AS total "
+            "FROM invoices GROUP BY status"
+        ).fetchall()
+        by_status = {row["status"]: {"count": row["n"], "total_minor": row["total"]} for row in rows}
+
+        pending_outbox = conn.execute(
+            "SELECT COUNT(*) AS n FROM sheet_sync_outbox WHERE delivered_at IS NULL"
+        ).fetchone()["n"]
+        failed_reminders = conn.execute(
+            "SELECT COUNT(*) AS n FROM audit_events WHERE event_type LIKE 'REMINDER_%' "
+            "AND payload_json LIKE '%\"delivery_status\": \"FAILED\"%'"
+        ).fetchone()["n"]
+        failed_invoice_emails = conn.execute(
+            "SELECT COUNT(*) AS n FROM audit_events WHERE event_type = 'INVOICE_EMAIL' "
+            "AND payload_json LIKE '%\"delivery_status\": \"FAILED\"%'"
+        ).fetchone()["n"]
+
+    outstanding = sum(
+        entry["total_minor"]
+        for status, entry in by_status.items()
+        if status in ("READY_TO_BILL", "SENT", "OVERDUE")
+    )
+    exceptions = {
+        "sheet_updates_not_yet_pulled": pending_outbox,
+        "failed_reminder_deliveries": failed_reminders,
+        "failed_invoice_emails": failed_invoice_emails,
+    }
+    return {
+        "active_tenants": active_tenants,
+        "invoices_by_status": by_status,
+        "outstanding_total_minor": outstanding,
+        "overdue_total_minor": by_status.get("OVERDUE", {}).get("total_minor", 0),
+        "exceptions": exceptions,
+        "needs_attention": any(value > 0 for value in exceptions.values()),
+        "email_delivery": "dry_run" if settings.dry_run else "smtp",
+        "scheduler": "enabled" if settings.scheduler_enabled else "off",
+    }
 
 
 def main() -> int:

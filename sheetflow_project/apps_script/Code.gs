@@ -26,13 +26,54 @@ function onOpen() {
     .addSeparator()
     .addItem("3. Send Weekly Cash-Flow Digest", "requestWeeklyDigest")
     .addItem("4. Sync Payment Status from Server", "syncPaymentStatuses")
+    .addSeparator()
+    .addItem("5. Install automatic triggers", "installTriggers")
     .addToUi();
+}
+
+/**
+ * Installs the time-driven triggers this sheet needs. Run once from the editor.
+ *
+ * Without them the sync only happens when someone opens the menu, which is exactly
+ * how a ledger drifts: no one opens the sheet on the day a payment lands.
+ */
+function installTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    const handler = trigger.getHandlerFunction();
+    if (handler === "syncPaymentStatuses" || handler === "runDailyMaintenance") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  ScriptApp.newTrigger("syncPaymentStatuses").timeBased().everyHours(6).create();
+  ScriptApp.newTrigger("runDailyMaintenance").timeBased().atHour(8).everyDays(1).create();
+  uiAlert(
+    "Automatic triggers installed.\n\n" +
+    "Payment status syncs every 6 hours; reminders run daily at 08:00 in this sheet's timezone."
+  );
+}
+
+/** Trigger entry point: sync the ledger, then run today's reminder pass. */
+function runDailyMaintenance() {
+  syncPaymentStatuses();
+  triggerDunningRun();
+}
+
+/**
+ * Alerts in the UI when a human is present; logs when running from a trigger,
+ * where SpreadsheetApp.getUi() throws.
+ */
+function uiAlert(message) {
+  try {
+    uiAlert(message);
+  } catch (err) {
+    Logger.log(message);
+  }
 }
 
 function processReadyRows() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETFLOW_CONFIG.LEDGER_TAB_NAME);
   if (!sheet) {
-    SpreadsheetApp.getUi().alert("Tab '" + SHEETFLOW_CONFIG.LEDGER_TAB_NAME + "' not found!");
+    uiAlert("Tab '" + SHEETFLOW_CONFIG.LEDGER_TAB_NAME + "' not found!");
     return;
   }
 
@@ -98,7 +139,7 @@ function processReadyRows() {
     }
   }
 
-  SpreadsheetApp.getUi().alert("SheetFlow processed " + processedCount + " invoice(s).");
+  uiAlert("SheetFlow processed " + processedCount + " invoice(s).");
 }
 
 /** Runs the T-3 / T+0 / T+7 dunning pass for this tenant as of today. */
@@ -109,7 +150,7 @@ function triggerDunningRun() {
   });
 
   if (response.getResponseCode() !== 200) {
-    SpreadsheetApp.getUi().alert("Dunning run failed:\n" + response.getContentText());
+    uiAlert("Dunning run failed:\n" + response.getContentText());
     return;
   }
 
@@ -119,7 +160,7 @@ function triggerDunningRun() {
     message += "\n\n[" + r.stage + "] " + r.invoice_number + " — " + r.client_email +
       "\n" + r.subject + "\nDelivery: " + r.delivery_status;
   });
-  SpreadsheetApp.getUi().alert(message);
+  uiAlert(message);
 }
 
 /** Fetches and displays the weekly cash-flow digest for this tenant. */
@@ -132,12 +173,12 @@ function requestWeeklyDigest() {
   );
 
   if (response.getResponseCode() !== 200) {
-    SpreadsheetApp.getUi().alert("Digest request failed:\n" + response.getContentText());
+    uiAlert("Digest request failed:\n" + response.getContentText());
     return;
   }
 
   const digest = JSON.parse(response.getContentText());
-  SpreadsheetApp.getUi().alert(digest.formatted_summary);
+  uiAlert(digest.formatted_summary);
 }
 
 /**
@@ -151,19 +192,19 @@ function requestWeeklyDigest() {
 function syncPaymentStatuses() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETFLOW_CONFIG.LEDGER_TAB_NAME);
   if (!sheet) {
-    SpreadsheetApp.getUi().alert("Tab '" + SHEETFLOW_CONFIG.LEDGER_TAB_NAME + "' not found!");
+    uiAlert("Tab '" + SHEETFLOW_CONFIG.LEDGER_TAB_NAME + "' not found!");
     return;
   }
 
   const response = callOperatorApi("/api/v1/operator/sheet-updates", "get", null);
   if (response.getResponseCode() !== 200) {
-    SpreadsheetApp.getUi().alert("Sync failed:\n" + response.getContentText());
+    uiAlert("Sync failed:\n" + response.getContentText());
     return;
   }
 
   const updates = JSON.parse(response.getContentText()).updates || [];
   if (!updates.length) {
-    SpreadsheetApp.getUi().alert("Nothing to sync — the ledger is up to date.");
+    uiAlert("Nothing to sync — the ledger is up to date.");
     return;
   }
 
@@ -200,7 +241,7 @@ function syncPaymentStatuses() {
       ids: acknowledged
     });
     if (ack.getResponseCode() !== 200) {
-      SpreadsheetApp.getUi().alert(
+      uiAlert(
         "Wrote " + acknowledged.length + " row(s) but could not acknowledge them; " +
         "they will be re-sent next run.\n" + ack.getContentText()
       );
@@ -208,7 +249,7 @@ function syncPaymentStatuses() {
     }
   }
 
-  SpreadsheetApp.getUi().alert(
+  uiAlert(
     "Synced " + acknowledged.length + " payment update(s)." +
     (missing.length ? "\nNot found in this sheet: " + missing.join(", ") : "")
   );

@@ -55,6 +55,15 @@ def onboard_tenant(
     If `webhook_secret` is omitted a fresh one is generated — which invalidates any
     sheet still holding the old value, so the response says whether it rotated.
     """
+    from src.schemas import SUPPORTED_CURRENCIES
+
+    billing_currency = (currency_code or "INR").strip().upper()
+    if billing_currency not in SUPPORTED_CURRENCIES:
+        raise ValueError(
+            f"Unsupported currency '{currency_code}'. "
+            f"Choose one of: {', '.join(SUPPORTED_CURRENCIES)}."
+        )
+
     init_db(db_path)
     with get_db_connection(db_path) as conn:
         repo = SheetFlowRepository(conn)
@@ -69,7 +78,7 @@ def onboard_tenant(
             google_sheet_id=google_sheet_id,
             webhook_secret=secret,
             tax_id=tax_id,
-            currency_code=currency_code,
+            currency_code=billing_currency,
             upi_vpa=upi_vpa,
             owner_email=owner_email,
         )

@@ -106,7 +106,16 @@ def process_sheet_row_webhook(
 
     artifacts = generate_payment_artifacts(tenant, invoice)
     payment_url = artifacts.payment_url
-    if payment_link_provider is not None:
+    gateway_ref = artifacts.gateway_reference
+
+    existing_ref = invoice.payment_gateway_ref or ""
+    if existing_ref.startswith("rzp_") and invoice.payment_url:
+        # A gateway link already exists for this invoice (a re-ingested row): reuse it.
+        # Creating a second link would leave one invoice with two payable URLs, and a
+        # customer paying the older one would look like a payment for a dead link.
+        payment_url = invoice.payment_url
+        gateway_ref = existing_ref
+    elif payment_link_provider is not None and invoice.status in ("DRAFT", "READY_TO_BILL"):
         # A card gateway link is nicer but must never block the invoice: if the
         # provider is down, the zero-fee UPI link stays in place.
         try:
@@ -114,7 +123,7 @@ def process_sheet_row_webhook(
         except Exception:  # noqa: BLE001
             provided = None
         if provided:
-            payment_url = provided
+            payment_url, gateway_ref = provided
 
     html_path, pdf_path = generate_invoice_pdf(
         tenant=tenant,
@@ -128,7 +137,7 @@ def process_sheet_row_webhook(
         invoice = repo.update_invoice_billing_artifacts(
             invoice.id,
             payment_url=payment_url,
-            payment_gateway_ref=artifacts.gateway_reference,
+            payment_gateway_ref=gateway_ref,
             pdf_path=pdf_path,
             new_status="SENT",
         )

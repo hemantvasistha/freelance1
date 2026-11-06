@@ -94,6 +94,15 @@ def record_razorpay_payment(conn: sqlite3.Connection, event: dict) -> Reconcilia
     if not invoice:
         raise ValueError(f"Invoice '{event['invoice_number']}' not found.")
 
+    # A payment in a different currency is not this invoice's payment, whatever its
+    # numeric amount says.
+    expected_currency = (tenant.currency_code or "INR").upper()
+    provided_currency = str(event.get("currency") or expected_currency).upper()
+    if provided_currency != expected_currency:
+        raise ValueError(
+            f"Currency mismatch: invoice is {expected_currency}, payment claims {provided_currency}."
+        )
+
     if event["amount_paid_minor"] < invoice.total_minor:
         raise ValueError(
             f"Underpayment rejected: expected {invoice.total_minor} minor units, "
@@ -146,8 +155,12 @@ def create_payment_link(
     amount_minor: int,
     currency: str,
     description: str,
-) -> str:
-    """Creates a hosted Razorpay page and returns its short_url."""
+) -> tuple[str, str]:
+    """Creates a hosted Razorpay page and returns `(short_url, reference)`.
+
+    The reference is stored on the invoice, which is what makes re-ingesting the same
+    row reuse the link instead of creating a second payable URL.
+    """
     response = httpx.post(
         f"{RAZORPAY_API_BASE}/payment_links",
         auth=(key_id, key_secret),
@@ -162,7 +175,8 @@ def create_payment_link(
         timeout=10.0,
     )
     response.raise_for_status()
-    return response.json()["short_url"]
+    payload = response.json()
+    return payload["short_url"], f"rzp_{payload.get('id', '')}"
 
 
 def build_payment_link_provider(settings) -> callable | None:
@@ -172,7 +186,7 @@ def build_payment_link_provider(settings) -> callable | None:
     if not key_id or not key_secret:
         return None
 
-    def provide(tenant, invoice) -> str | None:
+    def provide(tenant, invoice) -> tuple[str, str] | None:
         return create_payment_link(
             key_id=key_id,
             key_secret=key_secret,
