@@ -125,6 +125,17 @@ def record_razorpay_payment(conn: sqlite3.Connection, event: dict) -> Reconcilia
             gateway_payment_id=event["gateway_payment_id"] or "razorpay",
         )
 
+    repo.record_payment(
+        tenant_id=event["tenant_id"],
+        invoice=invoice,
+        amount_minor=event["amount_paid_minor"],
+        currency=provided_currency,
+        source="GATEWAY",
+        provider="razorpay",
+        provider_payment_id=event["gateway_payment_id"] or None,
+        note=f"razorpay {event['event']}",
+    )
+
     outbox.enqueue(
         conn,
         tenant_id=event["tenant_id"],

@@ -290,6 +290,100 @@ class SheetFlowRepository:
             )
         return self.get_invoice_by_id(invoice_id)  # type: ignore
 
+    def record_payment(
+        self,
+        *,
+        tenant_id: str,
+        invoice: "InvoiceRecord",
+        amount_minor: int,
+        currency: str,
+        source: str,
+        provider: str = "",
+        provider_payment_id: str | None = None,
+        recorded_by: str = "",
+        note: str = "",
+    ) -> tuple[str, bool]:
+        """Appends a verified payment. Returns (id, created).
+
+        Never updates or deletes an existing payment: financial history is append-only.
+        A replayed gateway event is rejected by the unique (invoice, provider payment
+        id) index, so reconciliation can be retried safely.
+        """
+        if amount_minor <= 0:
+            raise ValueError("Payment amount must be positive.")
+        if source not in ("GATEWAY", "MANUAL"):
+            raise ValueError("source must be GATEWAY or MANUAL")
+        pid = f"pay_{uuid.uuid4().hex[:16]}"
+        now = utc_now_iso()
+        cur = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO payments (
+                id, tenant_id, invoice_id, invoice_number, amount_minor, currency,
+                source, provider, provider_payment_id, verified_at, recorded_by, note, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                pid,
+                tenant_id,
+                invoice.id,
+                invoice.invoice_number,
+                amount_minor,
+                currency,
+                source,
+                provider,
+                provider_payment_id,
+                now,
+                recorded_by,
+                note,
+                now,
+            ),
+        )
+        return pid, cur.rowcount == 1
+
+    def list_payments(self, tenant_id: str, limit: int = 100) -> list[dict]:
+        conn_rows = self.conn.execute(
+            "SELECT * FROM payments WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?",
+            (tenant_id, limit),
+        ).fetchall()
+        return [dict(row) for row in conn_rows]
+
+    def paid_total_minor(self, invoice_id: str) -> int:
+        """Sum of verified payments against one invoice (drives partial-payment state)."""
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM payments WHERE invoice_id = ?",
+            (invoice_id,),
+        ).fetchone()
+        return int(row["total"] or 0)
+
+    def claim_notification(self, tenant_id: str, kind: str, period_key: str) -> bool:
+        """Claims the right to deliver one periodic message. False means already sent."""
+        cur = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO notification_deliveries
+                (id, tenant_id, kind, period_key, status, created_at)
+            VALUES (?, ?, ?, ?, 'PENDING', ?)
+            """,
+            (f"ntf_{uuid.uuid4().hex[:16]}", tenant_id, kind, period_key, utc_now_iso()),
+        )
+        return cur.rowcount == 1
+
+    def set_notification_status(
+        self, tenant_id: str, kind: str, period_key: str, status: str
+    ) -> None:
+        self.conn.execute(
+            "UPDATE notification_deliveries SET status = ? "
+            "WHERE tenant_id = ? AND kind = ? AND period_key = ?",
+            (status, tenant_id, kind, period_key),
+        )
+
+    def release_notification(self, tenant_id: str, kind: str, period_key: str) -> None:
+        """Drops a claim whose delivery failed, so a retry can still send it."""
+        self.conn.execute(
+            "DELETE FROM notification_deliveries "
+            "WHERE tenant_id = ? AND kind = ? AND period_key = ? AND status = 'PENDING'",
+            (tenant_id, kind, period_key),
+        )
+
     def get_invoice_by_id(self, invoice_id: str) -> InvoiceRecord | None:
         row = self.conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
         return self._row_to_invoice(row) if row else None

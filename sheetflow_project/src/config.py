@@ -35,6 +35,42 @@ class Settings:
     scheduler_poll_seconds: int = 300
 
 
+def validate_runtime_settings(settings: Settings) -> tuple[list[str], list[str]]:
+    """(errors, warnings) for starting this process with this configuration.
+
+    In production a missing public base URL or admin token is fatal: invoices would
+    carry links nobody can open, and operator endpoints would silently be disabled.
+    Outside production the same problems are warnings, so local work stays frictionless.
+    """
+    environment = os.environ.get("SHEETFLOW_ENV", "development").strip().lower()
+    production = environment == "production"
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not settings.public_base_url.strip():
+        message = (
+            "SHEETFLOW_PUBLIC_BASE_URL is empty: invoice PDF links will be server paths "
+            "that no customer can open."
+        )
+        (errors if production else warnings).append(message)
+    if not settings.admin_token.strip():
+        message = (
+            "SHEETFLOW_ADMIN_TOKEN is empty: admin endpoints (ops view, manual payment, "
+            "server-side dunning) are disabled."
+        )
+        (errors if production else warnings).append(message)
+    if production and settings.dry_run:
+        warnings.append(
+            "DRY_RUN=true in production: invoice and reminder emails are recorded, not sent."
+        )
+    if production and not settings.smtp_password.strip():
+        warnings.append(
+            "SMTP_PASSWORD is empty: live email delivery is refused and delivery is reported "
+            "as SKIPPED."
+        )
+    return errors, warnings
+
+
 def get_settings(db_path_override: str | None = None) -> Settings:
     return Settings(
         db_path=db_path_override or os.environ.get("SHEETFLOW_DB_PATH", "sheetflow.db"),

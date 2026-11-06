@@ -77,6 +77,43 @@ CREATE TABLE IF NOT EXISTS sheet_sync_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
     ON sheet_sync_outbox (tenant_id, delivered_at, created_at);
+
+-- Append-only record of money actually received. The invoice carries the current
+-- status; this table carries the history, which is what makes partial payments and
+-- "why does this say PAID" answerable months later.
+CREATE TABLE IF NOT EXISTS payments (
+    id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL REFERENCES tenants(id),
+    invoice_id          TEXT NOT NULL REFERENCES invoices(id),
+    invoice_number      TEXT NOT NULL,
+    amount_minor        INTEGER NOT NULL,
+    currency            TEXT NOT NULL,
+    source              TEXT NOT NULL CHECK(source IN ('GATEWAY', 'MANUAL')),
+    provider            TEXT NOT NULL DEFAULT '',
+    provider_payment_id TEXT,
+    verified_at         TEXT NOT NULL,
+    recorded_by         TEXT NOT NULL DEFAULT '',
+    note                TEXT NOT NULL DEFAULT '',
+    created_at          TEXT NOT NULL
+);
+-- NULL provider ids are distinct in SQLite, so several manual partial payments are
+-- allowed while a replayed gateway payment id is rejected.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_id
+    ON payments (invoice_id, provider_payment_id);
+CREATE INDEX IF NOT EXISTS idx_payments_tenant
+    ON payments (tenant_id, created_at DESC);
+
+-- One row per digest (or other periodic message) per tenant per period, so a
+-- re-run or a crashed worker cannot email the same summary twice.
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+    id         TEXT PRIMARY KEY,
+    tenant_id  TEXT NOT NULL REFERENCES tenants(id),
+    kind       TEXT NOT NULL,
+    period_key TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (kind, tenant_id, period_key)
+);
 """
 
 

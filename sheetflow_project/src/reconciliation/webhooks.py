@@ -96,6 +96,18 @@ def verify_and_reconcile_payment(
             gateway_payment_id=payload.gateway_payment_id,
         )
 
+    # Append the money movement itself, not just the status change.
+    repo.record_payment(
+        tenant_id=payload.tenant_id,
+        invoice=inv,
+        amount_minor=payload.amount_paid_minor,
+        currency=expected_currency,
+        source="GATEWAY",
+        provider="signed-webhook",
+        provider_payment_id=payload.gateway_payment_id,
+        note="verified payment webhook",
+    )
+
     # The customer's sheet learns about PAID by pulling this row, keyed on the
     # invoice number (stable) rather than the row position (moves when rows shift).
     outbox.enqueue(

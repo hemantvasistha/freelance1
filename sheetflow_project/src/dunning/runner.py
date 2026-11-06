@@ -130,6 +130,15 @@ def run_weekly_digest(
                 digests.append(entry)
                 continue
 
+            period_key = as_of
+            if not repo.claim_notification(tenant.id, "WEEKLY_DIGEST", period_key):
+                # Re-running the job (or a retried worker) must not email the same
+                # summary twice.
+                entry["delivery_status"] = "DUPLICATE_SKIPPED"
+                entry["delivery_error"] = "digest already delivered for this date"
+                digests.append(entry)
+                continue
+
             status, error = active_mailer.send(
                 OutboundEmail(
                     to=recipient,
@@ -141,6 +150,11 @@ def run_weekly_digest(
                     ),
                 )
             )
+            if status == "FAILED":
+                # Let a later run retry instead of losing the digest for the week.
+                repo.release_notification(tenant.id, "WEEKLY_DIGEST", period_key)
+            else:
+                repo.set_notification_status(tenant.id, "WEEKLY_DIGEST", period_key, status)
             entry["delivery_status"] = status
             entry["delivery_error"] = error
             digests.append(entry)

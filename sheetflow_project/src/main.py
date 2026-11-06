@@ -7,12 +7,12 @@ import logging
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.billing.document_links import verify_invoice_pdf_token
 from src.billing.pdf_generator import active_pdf_engine
@@ -42,7 +42,7 @@ from src.reconciliation.webhooks import (
     compute_sheet_signature,
     verify_and_reconcile_payment,
 )
-from src.schemas import PaymentWebhookPayload, SheetRowWebhookPayload
+from src.schemas import PaymentWebhookPayload, SheetRowWebhookPayload, to_minor_units
 
 
 logger = logging.getLogger("sheetflow.scheduler")
@@ -124,6 +124,15 @@ class OperatorRunRequest(BaseModel):
 
 class SheetAckRequest(BaseModel):
     ids: list[str] = []
+
+
+class ManualPaymentRequest(BaseModel):
+    tenant_id: str
+    invoice_number: str
+    amount_major: str = Field(..., description="Decimal string, e.g. '4130.00'")
+    reference: str = Field(..., min_length=1, description="UPI/bank reference — unique per invoice")
+    recorded_by: str = Field(..., min_length=1, description="Who verified the payment")
+    note: str = ""
 
 
 def require_admin_token(request: Request) -> None:
@@ -492,6 +501,88 @@ def api_owner_ops() -> dict:
         "needs_attention": any(value > 0 for value in exceptions.values()),
         "email_delivery": "dry_run" if settings.dry_run else "smtp",
         "scheduler": "enabled" if settings.scheduler_enabled else "off",
+    }
+
+
+@app.post("/api/v1/admin/manual-payment", dependencies=[Depends(require_admin_token)])
+def api_manual_payment(req: ManualPaymentRequest) -> dict:
+    """Records a payment confirmed outside a gateway (UPI transfer, bank credit).
+
+    The zero-fee UPI rail cannot confirm itself, so this is the only way a UPI-only
+    tenant's invoices become PAID. It is admin-only, demands a unique reference and the
+    name of the person who verified it, and appends to the payment history rather than
+    overwriting it, so a partial payment is a fact rather than a guess.
+    """
+    settings = get_settings()
+    try:
+        amount_minor = to_minor_units(req.amount_major)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if amount_minor <= 0:
+        raise HTTPException(status_code=400, detail="amount_major must be positive.")
+
+    with get_db_connection(settings.db_path) as conn:
+        repo = SheetFlowRepository(conn)
+        tenant = repo.get_tenant(req.tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=404, detail=f"Tenant '{req.tenant_id}' not found.")
+        invoice = repo.get_invoice_by_number(tenant.id, req.invoice_number)
+        if not invoice:
+            raise HTTPException(
+                status_code=404, detail=f"Invoice '{req.invoice_number}' not found."
+            )
+        if invoice.status == "CANCELLED":
+            raise HTTPException(status_code=409, detail="Cancelled invoices cannot receive payments.")
+
+        recorded_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        reference = req.reference.strip()
+        _, created = repo.record_payment(
+            tenant_id=tenant.id,
+            invoice=invoice,
+            amount_minor=amount_minor,
+            currency=(tenant.currency_code or "INR").upper(),
+            source="MANUAL",
+            provider="upi" if tenant.upi_vpa else "manual",
+            provider_payment_id=reference,
+            recorded_by=req.recorded_by.strip(),
+            note=req.note.strip(),
+        )
+        if not created:
+            raise HTTPException(
+                status_code=409, detail=f"Reference '{reference}' is already recorded for this invoice."
+            )
+
+        paid_total = repo.paid_total_minor(invoice.id)
+        became_paid = False
+        if paid_total >= invoice.total_minor and invoice.status != "PAID":
+            invoice = repo.mark_invoice_paid(
+                tenant_id=tenant.id,
+                invoice_number=invoice.invoice_number,
+                paid_at_iso=recorded_at,
+                gateway_payment_id=reference,
+            )
+            outbox.enqueue(
+                conn,
+                tenant_id=tenant.id,
+                invoice_number=invoice.invoice_number,
+                status="PAID",
+                paid_at=invoice.paid_at or recorded_at,
+                payment_ref=reference,
+                event_key=f"sheet:{invoice.id}:PAID",
+            )
+            became_paid = True
+
+        outstanding = max(invoice.total_minor - paid_total, 0)
+        status = invoice.status
+
+    return {
+        "invoice_number": req.invoice_number,
+        "status": status,
+        "amount_recorded_minor": amount_minor,
+        "paid_total_minor": paid_total,
+        "outstanding_minor": outstanding,
+        "became_paid": became_paid,
+        "recorded_at": recorded_at,
     }
 
 

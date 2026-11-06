@@ -255,6 +255,20 @@ def main() -> int:
     if args.serve:
         import uvicorn
 
+        from src.config import get_settings, validate_runtime_settings
+
+        errors, warnings = validate_runtime_settings(get_settings(args.db))
+        for warning in warnings:
+            print(f"WARNING: {warning}")
+        if errors:
+            for error in errors:
+                print(f"ERROR: {error}", file=sys.stderr)
+            print(
+                "Refusing to start: fix the configuration above, or run with "
+                "SHEETFLOW_ENV=development for a local instance.",
+                file=sys.stderr,
+            )
+            return 2
         uvicorn.run(app, host=args.host, port=args.port)
         return 0
 
