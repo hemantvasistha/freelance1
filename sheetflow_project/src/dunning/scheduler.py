@@ -203,11 +203,28 @@ def evaluate_and_dispatch_reminders(
     return actions
 
 
+def _is_stale(timestamp_iso: str, stale_minutes: int) -> bool:
+    """True when a PENDING claim is older than `stale_minutes`.
+
+    A PENDING claim older than the threshold means the process that wrote it died
+    before recording a delivery outcome, so the reminder would otherwise be stranded.
+    """
+    try:
+        created = datetime.strptime(timestamp_iso, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except (TypeError, ValueError):
+        return False
+    age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
+    return age_minutes >= stale_minutes
+
+
 def retry_failed_reminders(
     conn: sqlite3.Connection,
     mailer: Mailer,
     max_attempts: int = 3,
     limit: int = 50,
+    stale_pending_minutes: int = 15,
 ) -> list[dict]:
     """Re-sends reminders whose delivery failed, without re-sending a delivered one.
 
@@ -217,7 +234,7 @@ def retry_failed_reminders(
     """
     repo = SheetFlowRepository(conn)
     rows = conn.execute(
-        "SELECT event_key, payload_json FROM audit_events "
+        "SELECT event_key, payload_json, created_at FROM audit_events "
         "WHERE event_type LIKE 'REMINDER_%' ORDER BY created_at ASC LIMIT ?",
         (limit,),
     ).fetchall()
@@ -225,10 +242,16 @@ def retry_failed_reminders(
     results: list[dict] = []
     for row in rows:
         payload = json.loads(row["payload_json"])
-        if payload.get("delivery_status") != DELIVERY_FAILED:
-            continue
+        delivery_status = payload.get("delivery_status")
         attempts = int(payload.get("attempts") or 1)
         if attempts >= max_attempts:
+            continue
+        # A crashed worker leaves PENDING behind; without this recovery path the
+        # reminder would never be sent and no error would ever be reported.
+        stranded_pending = delivery_status == DELIVERY_PENDING and _is_stale(
+            row["created_at"], stale_pending_minutes
+        )
+        if delivery_status != DELIVERY_FAILED and not stranded_pending:
             continue
         recipient = payload.get("recipient") or payload.get("client_email")
         if not recipient:

@@ -60,8 +60,11 @@ class TestBlock3GoogleSheetsIngestion(unittest.TestCase):
             self.assertEqual(res1.invoice_id, res2.invoice_id)
 
             events = repo.list_audit_events(res1.invoice_id)
-            self.assertEqual(len(events), 1)
-            self.assertEqual(events[0]["event_type"], "INVOICE_GENERATED_AND_SENT")
+            types = [e["event_type"] for e in events]
+            # Generation and delivery are recorded as two distinct facts now.
+            self.assertEqual(types, ["INVOICE_GENERATED_AND_SENT", "INVOICE_EMAIL"])
+            # No mailer was supplied, so delivery is SKIPPED — never assumed sent.
+            self.assertEqual(res1.delivery_status, "SKIPPED")
 
 
 if __name__ == "__main__":

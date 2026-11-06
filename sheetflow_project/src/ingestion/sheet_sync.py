@@ -5,9 +5,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Callable
 
 from src.billing.document_links import build_invoice_pdf_url
+from src.billing.invoice_email import DELIVERY_SKIPPED, dispatch_invoice_email
 from src.billing.payment_links import generate_payment_artifacts
 from src.billing.pdf_generator import generate_invoice_pdf
 from src.models import SheetFlowRepository
+from src.notifications.mailer import Mailer
 from src.schemas import (
     SheetRowWebhookPayload,
     calculate_gst_breakdown,
@@ -33,6 +35,9 @@ class SheetRowSyncResult:
     pdf_path: str
     html_path: str
     pdf_url: str
+    # Delivery of the invoice *email*, reported separately from PDF generation.
+    delivery_status: str
+    delivery_error: str | None = None
 
 
 def process_sheet_row_webhook(
@@ -41,6 +46,7 @@ def process_sheet_row_webhook(
     output_pdf_dir: str,
     public_base_url: str = "",
     payment_link_provider: Callable[[Any, Any], str | None] | None = None,
+    mailer: Mailer | None = None,
 ) -> SheetRowSyncResult:
     """
     Processes an incoming `READY_TO_BILL` spreadsheet row:
@@ -53,6 +59,11 @@ def process_sheet_row_webhook(
     `public_base_url` (e.g. `https://billing.example.com`) turns the rendered PDF into a
     client-openable signed URL; without it `pdf_url` is empty and only the disk path is
     returned, which the spreadsheet cannot use.
+
+    `mailer` sends the invoice email to the client. Its outcome is reported as
+    `delivery_status` and recorded in its own audit event, so "PDF generated" is never
+    confused with "invoice delivered". A delivery failure does not fail the request:
+    the invoice still exists and the sheet still gets its link.
     """
     repo = SheetFlowRepository(conn)
     tenant = repo.get_tenant(payload.tenant_id)
@@ -139,6 +150,24 @@ def process_sheet_row_webhook(
         },
     )
 
+    delivery_status, delivery_error = dispatch_invoice_email(
+        mailer, tenant, invoice, pdf_url, payment_url
+    )
+    email_event_payload = {
+        "invoice_number": invoice.invoice_number,
+        "recipient": invoice.client_email,
+        "delivery_status": delivery_status,
+        "delivery_error": delivery_error,
+    }
+    if not repo.record_audit_event_if_new(
+        invoice_id=invoice.id,
+        event_type="INVOICE_EMAIL",
+        event_key=f"email:{idem_key}",
+        payload=email_event_payload,
+    ):
+        # A replay only refreshes the recorded outcome; it must not queue a second email.
+        repo.update_audit_payload(f"email:{idem_key}", email_event_payload)
+
     total_major_str = str(
         (Decimal(invoice.total_minor) / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     )
@@ -160,4 +189,6 @@ def process_sheet_row_webhook(
         pdf_path=pdf_path,
         html_path=html_path,
         pdf_url=pdf_url,
+        delivery_status=delivery_status or DELIVERY_SKIPPED,
+        delivery_error=delivery_error,
     )

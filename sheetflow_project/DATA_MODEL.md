@@ -112,8 +112,16 @@ CREATE TABLE audit_events (
 The signature covers the exact bytes sent. Missing or wrong signatures return `401`.
 `status` is constrained to `READY_TO_BILL`; the server owns every other transition.
 
-Operator endpoints (`POST /api/v1/dunning/run`, `GET /api/v1/digest/{tenant_id}`) require
-`X-SheetFlow-Admin-Token` matching the server's `SHEETFLOW_ADMIN_TOKEN` env var.
+**Tenant operator endpoints** (`POST /api/v1/operator/dunning/run`,
+`GET /api/v1/operator/digest`, `GET /api/v1/operator/sheet-updates`,
+`POST /api/v1/operator/sheet-updates/ack`) require `X-SheetFlow-Operator-Token`: the
+**tenant's own** token issued at onboarding. The tenant is derived from the token, so a
+body-supplied `tenant_id` cannot address another tenant. Only a SHA-256 hash is stored.
+
+**Server-side operator endpoints** (`POST /api/v1/dunning/run`,
+`GET /api/v1/digest/{tenant_id}`) require `X-SheetFlow-Admin-Token` matching the
+server's `SHEETFLOW_ADMIN_TOKEN`. That token is for the owner's own tooling only and
+must never be placed in a customer's Apps Script.
 ```json
 {
   "tenant_id": "tnt_client01",

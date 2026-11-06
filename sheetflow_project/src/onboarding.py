@@ -11,19 +11,25 @@ from typing import Any
 
 from src.database import get_db_connection, init_db
 from src.models import SheetFlowRepository
+from src.operator_auth import generate_operator_token, hash_operator_token
 
 
 def render_apps_script_config(
-    tenant_id: str, webhook_secret: str, public_base_url: str
+    tenant_id: str, webhook_secret: str, operator_token: str, public_base_url: str
 ) -> str:
-    """The `SHEETFLOW_CONFIG` block to paste at the top of `Code.gs`."""
+    """The `SHEETFLOW_CONFIG` block to paste at the top of `Code.gs`.
+
+    Deliberately contains no server admin token: operator calls from the sheet are
+    authenticated with this tenant's own `OPERATOR_TOKEN`, which can only reach this
+    tenant's invoices, reminders and digest.
+    """
     base = (public_base_url or "https://your-sheetflow-domain.example.com").rstrip("/")
     return (
         "const SHEETFLOW_CONFIG = {\n"
         f'  API_BASE_URL: "{base}",\n'
         f'  TENANT_ID: "{tenant_id}",\n'
         f'  WEBHOOK_SECRET: "{webhook_secret}",\n'
-        '  ADMIN_TOKEN: "paste-the-server-SHEETFLOW_ADMIN_TOKEN-here",\n'
+        f'  OPERATOR_TOKEN: "{operator_token}",\n'
         '  LEDGER_TAB_NAME: "Invoices_Ledger"\n'
         "};"
     )
@@ -41,6 +47,7 @@ def onboard_tenant(
     currency_code: str = "INR",
     owner_email: str | None = None,
     webhook_secret: str | None = None,
+    operator_token: str | None = None,
     public_base_url: str = "",
 ) -> dict[str, Any]:
     """Creates or updates a tenant and returns everything needed to wire up a sheet.
@@ -53,6 +60,8 @@ def onboard_tenant(
         repo = SheetFlowRepository(conn)
         existing = repo.get_tenant(tenant_id)
         secret = webhook_secret or secrets.token_urlsafe(24)
+        # A tenant credential, not the server's: this one only unlocks this tenant.
+        op_token = operator_token or generate_operator_token()
         tenant = repo.upsert_tenant(
             tenant_id=tenant_id,
             business_name=business_name,
@@ -64,6 +73,8 @@ def onboard_tenant(
             upi_vpa=upi_vpa,
             owner_email=owner_email,
         )
+        repo.set_operator_token_hash(tenant_id, hash_operator_token(op_token))
+        tenant = repo.get_tenant(tenant_id)  # type: ignore[assignment]
         tenant_data = asdict(tenant)
 
     secret_rotated = existing is not None and existing.webhook_secret != secret
@@ -71,11 +82,15 @@ def onboard_tenant(
         "tenant": tenant_data,
         "webhook_secret": secret,
         "secret_rotated": secret_rotated,
+        "operator_token": op_token,
+        "operator_token_rotated": existing is not None,
         "created": existing is None,
-        "apps_script_config": render_apps_script_config(tenant_id, secret, public_base_url),
+        "apps_script_config": render_apps_script_config(
+            tenant_id, secret, op_token, public_base_url
+        ),
         "next_steps": [
             "Paste apps_script_config into the client's Code.gs SHEETFLOW_CONFIG block.",
-            "Set SHEETFLOW_PUBLIC_BASE_URL and SHEETFLOW_ADMIN_TOKEN on the server.",
+            "Set SHEETFLOW_PUBLIC_BASE_URL on the server (no admin token goes into client scripts).",
             "Create the Invoices_Ledger tab with the 16 columns from DATA_MODEL.md.",
             "Add one READY_TO_BILL row and run 'Process All READY_TO_BILL Rows'.",
         ],

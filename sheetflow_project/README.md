@@ -25,7 +25,7 @@ payment chases itself. One Python service plus one Google Apps Script file.
 cd sheetflow_project
 py -m venv .venv                      # Windows; python3 -m venv on macOS/Linux
 .venv/Scripts/python.exe -m pip install -r requirements.txt
-cp .env.example .env                  # then set SHEETFLOW_ADMIN_TOKEN
+cp .env.example .env                  # then set SHEETFLOW_PUBLIC_BASE_URL (+ SMTP if sending)
 
 .venv/Scripts/python.exe -m pytest tests -q     # 38 tests
 python sheetflow_engine.py --serve --port 8000  # from the repo root
@@ -73,7 +73,7 @@ which silently breaks any sheet still holding the old value.
 | `SHEETFLOW_DB_PATH` | SQLite ledger. One file per deployment. |
 | `SHEETFLOW_PDF_DIR` | Must be a **persistent** disk; PDF links are served from here. |
 | `SHEETFLOW_PUBLIC_BASE_URL` | Without it, column N gets a local path nobody can open. |
-| `SHEETFLOW_ADMIN_TOKEN` | Operator endpoints return 503 when unset (fails closed). |
+| `SHEETFLOW_ADMIN_TOKEN` | Server-side admin endpoints return 503 when unset (fails closed). Customers use their own per-tenant operator token instead; the admin token never goes into a client script. |
 | `DRY_RUN` | `true` records emails instead of sending them. |
 | `SMTP_*` | Required for live email when `DRY_RUN=false`. |
 | `SHEETFLOW_OWNER_EMAIL` | Digest recipient when a tenant has no `owner_email`. |

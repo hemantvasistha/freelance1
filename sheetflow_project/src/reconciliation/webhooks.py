@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from src.models import SheetFlowRepository
 from src.schemas import PaymentWebhookPayload
+from src.sheets import outbox
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,18 @@ def verify_and_reconcile_payment(
             paid_at_iso=payload.paid_at_iso,
             gateway_payment_id=payload.gateway_payment_id,
         )
+
+    # The customer's sheet learns about PAID by pulling this row, keyed on the
+    # invoice number (stable) rather than the row position (moves when rows shift).
+    outbox.enqueue(
+        conn,
+        tenant_id=payload.tenant_id,
+        invoice_number=payload.invoice_number,
+        status="PAID",
+        paid_at=inv.paid_at or payload.paid_at_iso,
+        payment_ref=payload.gateway_payment_id,
+        event_key=f"sheet:{inv.id}:PAID",
+    )
 
     return ReconciliationResult(
         invoice_id=inv.id,

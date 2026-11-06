@@ -24,6 +24,7 @@ import httpx
 
 from src.models import SheetFlowRepository
 from src.reconciliation.webhooks import ReconciliationResult
+from src.sheets import outbox
 
 RAZORPAY_API_BASE = "https://api.razorpay.com/v1"
 
@@ -114,6 +115,16 @@ def record_razorpay_payment(conn: sqlite3.Connection, event: dict) -> Reconcilia
             paid_at_iso=event["paid_at_iso"],
             gateway_payment_id=event["gateway_payment_id"] or "razorpay",
         )
+
+    outbox.enqueue(
+        conn,
+        tenant_id=event["tenant_id"],
+        invoice_number=event["invoice_number"],
+        status="PAID",
+        paid_at=invoice.paid_at or event["paid_at_iso"],
+        payment_ref=event["gateway_payment_id"] or "razorpay",
+        event_key=f"sheet:{invoice.id}:PAID",
+    )
 
     return ReconciliationResult(
         invoice_id=invoice.id,

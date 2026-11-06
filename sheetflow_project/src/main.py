@@ -23,8 +23,14 @@ from src.dunning.scheduler import (
 )
 from src.dunning.runner import run_daily, run_weekly_digest
 from src.ingestion.sheet_sync import process_sheet_row_webhook
-from src.models import SheetFlowRepository
+from src.models import SheetFlowRepository, TenantRecord
 from src.notifications.mailer import MailerNotConfigured, build_mailer
+from src.operator_auth import (
+    OPERATOR_TOKEN_HEADER,
+    check_rate_limit,
+    resolve_tenant_by_token,
+)
+from src.sheets import outbox
 from src.reconciliation.razorpay import (
     build_payment_link_provider,
     parse_payment_event,
@@ -104,8 +110,23 @@ class DunningTriggerRequest(BaseModel):
     as_of_date: str
 
 
+class OperatorRunRequest(BaseModel):
+    # tenant_id is accepted for backwards compatibility but never trusted: the
+    # token decides which tenant the call may touch.
+    tenant_id: str | None = None
+    as_of_date: str | None = None
+
+
+class SheetAckRequest(BaseModel):
+    ids: list[str] = []
+
+
 def require_admin_token(request: Request) -> None:
-    """Guards operator-only endpoints with the server's SHEETFLOW_ADMIN_TOKEN.
+    """Guards server-side operator endpoints with SHEETFLOW_ADMIN_TOKEN.
+
+    This is the owner's own credential (cron, admin tooling) and spans every tenant.
+    It must never be given to a customer: customer sheets authenticate with their own
+    per-tenant operator token via `require_operator_tenant`.
 
     If no token is configured the endpoints stay disabled rather than open, so a
     fresh deployment cannot leak other tenants' receivables by default.
@@ -121,6 +142,28 @@ def require_admin_token(request: Request) -> None:
         raise HTTPException(
             status_code=401, detail="Invalid or missing X-SheetFlow-Admin-Token header."
         )
+
+
+def require_operator_tenant(request: Request) -> TenantRecord:
+    """Authenticates a customer's sheet by that tenant's own operator token.
+
+    Replaces the old model where every client script carried the server-wide admin
+    token. The token identifies the tenant, so a caller cannot name another tenant
+    and act on its invoices, reminders or digest.
+    """
+    token = request.headers.get(OPERATOR_TOKEN_HEADER, "")
+    if not token:
+        raise HTTPException(
+            status_code=401, detail=f"Missing {OPERATOR_TOKEN_HEADER} header."
+        )
+    if not check_rate_limit(token):
+        raise HTTPException(status_code=429, detail="Too many operator requests; slow down.")
+    settings = get_settings()
+    with get_db_connection(settings.db_path) as conn:
+        tenant = resolve_tenant_by_token(conn, token)
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Invalid operator token.")
+    return tenant
 
 
 @app.get("/health")
@@ -148,6 +191,12 @@ async def api_process_sheet_row(payload: SheetRowWebhookPayload, request: Reques
     provided_signature = request.headers.get("X-SheetFlow-Signature", "")
     settings = get_settings()
     try:
+        mailer = build_mailer(settings)
+    except MailerNotConfigured:
+        # Invoicing must keep working even if SMTP is misconfigured; delivery is
+        # then reported as SKIPPED instead of being silently assumed.
+        mailer = None
+    try:
         with get_db_connection(settings.db_path) as conn:
             tenant = SheetFlowRepository(conn).get_tenant(payload.tenant_id)
             if not tenant or not tenant.is_active:
@@ -166,6 +215,7 @@ async def api_process_sheet_row(payload: SheetRowWebhookPayload, request: Reques
                 settings.output_pdf_dir,
                 settings.public_base_url,
                 payment_link_provider=build_payment_link_provider(settings),
+                mailer=mailer,
             )
             return {
                 "invoice_id": res.invoice_id,
@@ -179,6 +229,8 @@ async def api_process_sheet_row(payload: SheetRowWebhookPayload, request: Reques
                 "upi_uri": res.upi_uri,
                 "pdf_path": res.pdf_path,
                 "pdf_url": res.pdf_url,
+                "delivery_status": res.delivery_status,
+                "delivery_error": res.delivery_error,
             }
     except HTTPException:
         raise
@@ -299,6 +351,84 @@ def api_weekly_digest(tenant_id: str, as_of_date: str | None = None) -> dict:
             return digest.__dict__
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/api/v1/operator/dunning/run")
+def api_operator_dunning_run(
+    req: OperatorRunRequest,
+    tenant: TenantRecord = Depends(require_operator_tenant),
+) -> dict:
+    """Runs the reminder pass for the token's own tenant only.
+
+    The tenant comes from the token, not the body, so a customer's sheet cannot
+    trigger another customer's reminders.
+    """
+    settings = get_settings()
+    as_of = req.as_of_date or date.today().isoformat()
+    try:
+        mailer = build_mailer(settings)
+    except MailerNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    with get_db_connection(settings.db_path) as conn:
+        try:
+            actions = evaluate_and_dispatch_reminders(conn, tenant.id, as_of, mailer=mailer)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        for action in actions:
+            if action.new_status == "OVERDUE":
+                outbox.enqueue(
+                    conn,
+                    tenant_id=tenant.id,
+                    invoice_number=action.invoice_number,
+                    status="OVERDUE",
+                    event_key=f"sheet:{action.invoice_id}:OVERDUE",
+                )
+
+    return {
+        "tenant_id": tenant.id,
+        "as_of_date": as_of,
+        "dispatched_count": len(actions),
+        "reminders": [a.__dict__ for a in actions],
+    }
+
+
+@app.get("/api/v1/operator/digest")
+def api_operator_digest(
+    as_of_date: str | None = None,
+    tenant: TenantRecord = Depends(require_operator_tenant),
+) -> dict:
+    settings = get_settings()
+    report_date = as_of_date or date.today().isoformat()
+    try:
+        with get_db_connection(settings.db_path) as conn:
+            return generate_weekly_executive_digest(conn, tenant.id, report_date).__dict__
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/api/v1/operator/sheet-updates")
+def api_operator_sheet_updates(
+    tenant: TenantRecord = Depends(require_operator_tenant),
+) -> dict:
+    """Pending ledger changes for this tenant's sheet (payment/overdue write-back)."""
+    settings = get_settings()
+    with get_db_connection(settings.db_path) as conn:
+        updates = outbox.pending(conn, tenant.id)
+        outbox.record_attempt(conn, tenant.id, [u["id"] for u in updates])
+    return {"tenant_id": tenant.id, "count": len(updates), "updates": updates}
+
+
+@app.post("/api/v1/operator/sheet-updates/ack")
+def api_operator_sheet_ack(
+    req: SheetAckRequest,
+    tenant: TenantRecord = Depends(require_operator_tenant),
+) -> dict:
+    """Marks written changes delivered, scoped to the tenant that owns them."""
+    settings = get_settings()
+    with get_db_connection(settings.db_path) as conn:
+        acknowledged = outbox.acknowledge(conn, tenant.id, req.ids)
+    return {"tenant_id": tenant.id, "acknowledged": acknowledged}
 
 
 def main() -> int:

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     google_sheet_id TEXT NOT NULL,
     upi_vpa TEXT,
     owner_email TEXT,
+    operator_token_hash TEXT,
     webhook_secret TEXT NOT NULL,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
@@ -58,6 +59,24 @@ CREATE TABLE IF NOT EXISTS audit_events (
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+-- Outbox of ledger changes the customer's spreadsheet has not acknowledged yet.
+-- Keyed on invoice_number (a stable identifier) rather than a row position, because
+-- rows are inserted, deleted and re-sorted by the business owner at will.
+CREATE TABLE IF NOT EXISTS sheet_sync_outbox (
+    id             TEXT PRIMARY KEY,
+    tenant_id      TEXT NOT NULL REFERENCES tenants(id),
+    invoice_number TEXT NOT NULL,
+    event_key      TEXT NOT NULL UNIQUE,
+    status         TEXT NOT NULL,
+    paid_at        TEXT,
+    payment_ref    TEXT,
+    created_at     TEXT NOT NULL,
+    delivered_at   TEXT,
+    attempts       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+    ON sheet_sync_outbox (tenant_id, delivered_at, created_at);
 """
 
 
@@ -76,6 +95,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     tenant_columns = {row[1] for row in conn.execute("PRAGMA table_info(tenants)")}
     if "owner_email" not in tenant_columns:
         conn.execute("ALTER TABLE tenants ADD COLUMN owner_email TEXT")
+    if "operator_token_hash" not in tenant_columns:
+        # Nullable on purpose: an existing tenant keeps working through the
+        # server-side admin token until it is re-onboarded and gets its own token.
+        conn.execute("ALTER TABLE tenants ADD COLUMN operator_token_hash TEXT")
 
 
 @contextmanager

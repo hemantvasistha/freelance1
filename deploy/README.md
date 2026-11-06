@@ -38,7 +38,7 @@ Minimum for a real client:
 SHEETFLOW_DB_PATH=/srv/sheetflow/clients.db
 SHEETFLOW_PDF_DIR=/srv/sheetflow/invoices
 SHEETFLOW_PUBLIC_BASE_URL=https://billing.example.com   # must match Caddy
-SHEETFLOW_ADMIN_TOKEN=<openssl rand -base64 32>
+SHEETFLOW_ADMIN_TOKEN=<openssl rand -base64 32>   # server-side only; never give this to a client
 DRY_RUN=false
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587

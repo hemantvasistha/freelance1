@@ -24,6 +24,8 @@ class TenantRecord:
     is_active: bool
     created_at: str
     owner_email: str | None = None
+    # SHA-256 of the tenant's own operator token; plaintext is never stored.
+    operator_token_hash: str | None = None
 
 
 @dataclass
@@ -112,6 +114,14 @@ class SheetFlowRepository:
         row = self.conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
         return self._row_to_tenant(row) if row else None
 
+    def set_operator_token_hash(self, tenant_id: str, token_hash: str) -> bool:
+        """Stores the hash of a freshly issued tenant operator token."""
+        cur = self.conn.execute(
+            "UPDATE tenants SET operator_token_hash = ? WHERE id = ?",
+            (token_hash, tenant_id),
+        )
+        return cur.rowcount == 1
+
     def _row_to_tenant(self, row: sqlite3.Row) -> TenantRecord:
         return TenantRecord(
             id=row["id"],
@@ -123,6 +133,9 @@ class SheetFlowRepository:
             upi_vpa=row["upi_vpa"],
             webhook_secret=row["webhook_secret"],
             owner_email=row["owner_email"],
+            operator_token_hash=(
+                row["operator_token_hash"] if "operator_token_hash" in row.keys() else None
+            ),
             is_active=bool(row["is_active"]),
             created_at=row["created_at"],
         )
