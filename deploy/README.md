@@ -10,15 +10,15 @@ sudo adduser --system --group --home /srv/sheetflow sheetflow
 sudo -u sheetflow -H bash
 cd /srv/sheetflow
 python3 -m venv .venv
-.venv/bin/pip install -r /path/to/sheetflow_project/requirements.txt
+.venv/bin/pip install -r /path/to/requirements.txt
 ```
 
-Copy `sheetflow_project/` and `sheetflow_engine.py` into `/srv/sheetflow` so the layout is:
+Copy `app/` and `sheetflow_engine.py` into `/srv/sheetflow` so the layout is:
 
 ```
 /srv/sheetflow/
 ├── sheetflow_engine.py
-├── sheetflow_project/
+├── app/
 ├── .venv/
 ├── .env              # chmod 600, never committed
 ├── clients.db        # created on first start
@@ -29,7 +29,7 @@ Copy `sheetflow_project/` and `sheetflow_engine.py` into `/srv/sheetflow` so the
 ## 2. Environment
 
 ```bash
-cp sheetflow_project/.env.example /srv/sheetflow/.env   # then edit
+cp app/.env.example /srv/sheetflow/.env   # then edit
 ```
 
 Minimum for a real client:

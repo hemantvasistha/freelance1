@@ -30,7 +30,7 @@ SECRET_A = "sec_alpha_2026"
 SECRET_B = "sec_beta_2026"
 ADMIN_TOKEN = "server-admin-token"
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TenantSecurityTestCase(unittest.TestCase):

@@ -5,10 +5,10 @@ clients, signed webhook writes and signed-in reads.
 
     # terminal 1
     SHEETFLOW_DB_PATH=/tmp/load.db SHEETFLOW_ADMIN_TOKEN=t SHEETFLOW_PUBLIC_BASE_URL=https://x \
-      py sheetflow_project/.venv/Scripts/python.exe sheetflow_engine.py --serve --port 8021
+      py app/.venv/Scripts/python.exe sheetflow_engine.py --serve --port 8021
 
     # terminal 2
-    py sheetflow_project/.venv/Scripts/python.exe scripts/http_load.py \
+    py app/.venv/Scripts/python.exe scripts/http_load.py \
       --base-url http://127.0.0.1:8021 --token t --secret sec_load --users 25 --requests 400
 """
 from __future__ import annotations

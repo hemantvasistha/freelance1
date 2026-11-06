@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SheetFlow Engine launcher (`sheetflow_engine.py`).
 
-This is a thin entrypoint over the `sheetflow_project` package, so there is exactly
+This is a thin entrypoint over the `app` package, so there is exactly
 one copy of the application code:
 
     python sheetflow_engine.py --self-test   # run the full unit + HTTP test suite
@@ -13,15 +13,15 @@ one copy of the application code:
     python sheetflow_engine.py --pitch-jobs   # scan, shortlist, and email you a pitch draft per lead
 
 Setup (once):
-    py -m venv sheetflow_project/.venv
-    sheetflow_project/.venv/Scripts/python.exe -m pip install -r sheetflow_project/requirements.txt
+    py -m venv app/.venv
+    app/.venv/Scripts/python.exe -m pip install -r requirements.txt
 """
 import argparse
 import sys
 import unittest
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent / "sheetflow_project"
+PROJECT_ROOT = Path(__file__).resolve().parent / "app"
 if not (PROJECT_ROOT / "src").is_dir():
     sys.exit(f"Could not find the SheetFlow package at {PROJECT_ROOT}")
 

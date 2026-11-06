@@ -5,7 +5,7 @@ in a temporary directory, on this machine. It is useful for finding algorithmic 
 query problems and for comparing changes over time. It is NOT a production capacity
 measurement — there is no network, no TLS, no reverse proxy and no second process.
 
-    py sheetflow_project/.venv/Scripts/python.exe scripts/load_test.py --tenants 4 --invoices-per-tenant 10 --reads 200
+    py app/.venv/Scripts/python.exe scripts/load_test.py --tenants 4 --invoices-per-tenant 10 --reads 200
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import tempfile
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1] / "sheetflow_project"
+PROJECT_ROOT = Path(__file__).resolve().parents[1] / "app"
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi.testclient import TestClient  # noqa: E402

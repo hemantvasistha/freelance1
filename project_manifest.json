@@ -7,17 +7,17 @@
   "next_up": "M5_FIRST_PAYING_CLIENT",
   "context_protocol": {
     "read_order": [
-      "PROJECT_CONTEXT.md",
+      "docs/product/PROJECT_CONTEXT.md",
       "project_manifest.json",
-      "DATA_MODEL.md",
-      "CHANGELOG.md",
+      "docs/product/DATA_MODEL.md",
+      "docs/product/CHANGELOG.md",
       "README.md",
-      "OFFER.md"
+      "docs/product/OFFER.md"
     ],
     "mandatory_update_on_exit": [
-      "PROJECT_CONTEXT.md",
+      "docs/product/PROJECT_CONTEXT.md",
       "project_manifest.json",
-      "CHANGELOG.md"
+      "docs/product/CHANGELOG.md"
     ]
   },
   "setup": {
@@ -32,7 +32,7 @@
     "run_digest": "python sheetflow_engine.py --run-digest",
     "job_intake": "python sheetflow_engine.py --jobs-scan && python sheetflow_engine.py --jobs-list",
     "retry_failed_email": "python sheetflow_engine.py --retry-failed",
-    "test_count": 38
+    "test_count": 66
   },
   "milestones": [
     {
@@ -40,13 +40,13 @@
       "title": "Product Requirements, Data Model & AI Context Persistence Pack",
       "status": "completed",
       "files": [
-        "PRD.md",
-        "PROJECT_CONTEXT.md",
-        "DATA_MODEL.md",
+        "docs/product/PRD.md",
+        "docs/product/PROJECT_CONTEXT.md",
+        "docs/product/DATA_MODEL.md",
         "project_manifest.json",
-        "CHANGELOG.md",
+        "docs/product/CHANGELOG.md",
         "README.md",
-        "OFFER.md"
+        "docs/product/OFFER.md"
       ],
       "verification_cmd": "ls README.md OFFER.md DATA_MODEL.md PROJECT_CONTEXT.md project_manifest.json CHANGELOG.md"
     },
@@ -102,7 +102,7 @@
         "src/onboarding.py",
         "src/notifications/mailer.py",
         "apps_script/Code.gs",
-        "OFFER.md"
+        "docs/product/OFFER.md"
       ],
       "verification_cmd": "python sheetflow_engine.py --list-tenants",
       "notes": [

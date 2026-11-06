@@ -4,7 +4,7 @@ Creates a database with real rows, takes a hot backup with SQLite's backup API, 
 it into a fresh file, and compares row counts and financial totals. If this script fails,
 the documented backup procedure is not trustworthy.
 
-    py sheetflow_project/.venv/Scripts/python.exe scripts/backup_restore_drill.py
+    py app/.venv/Scripts/python.exe scripts/backup_restore_drill.py
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1] / "sheetflow_project"
+PROJECT_ROOT = Path(__file__).resolve().parents[1] / "app"
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.database import get_db_connection, init_db  # noqa: E402

@@ -41,9 +41,9 @@ interface is their spreadsheet; there is no web dashboard, deliberately.
 ## Test status
 
 ```
-py sheetflow_project/.venv/Scripts/python.exe sheetflow_engine.py --self-test
+py app/.venv/Scripts/python.exe sheetflow_engine.py --self-test
 # Ran 66 tests ... OK
-py sheetflow_project/.venv/Scripts/python.exe scripts/backup_restore_drill.py   # match: true
+py app/.venv/Scripts/python.exe scripts/backup_restore_drill.py   # match: true
 ```
 
 No known failing test.

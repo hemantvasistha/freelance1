@@ -48,7 +48,7 @@ If that count is not plausible, your backups are broken — fix it before you ne
 ```bash
 cd /srv/sheetflow
 git pull
-.venv/bin/pip install -r sheetflow_project/requirements.txt
+.venv/bin/pip install -r requirements.txt
 sudo systemctl restart sheetflow
 curl -s https://billing.yourdomain.com/health
 ```

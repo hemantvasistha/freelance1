@@ -47,7 +47,7 @@ server's instruction). Leave them empty on new rows.
 ## 3. Attach the script
 
 1. In the sheet: **Extensions → Apps Script**.
-2. Paste `sheetflow_project/apps_script/Code.gs` as the only file.
+2. Paste `apps_script/Code.gs` as the only file.
 3. Replace the `SHEETFLOW_CONFIG` block with the `apps_script_config` value from step 1.
    It sets `API_BASE_URL`, `TENANT_ID`, `WEBHOOK_SECRET`, `OPERATOR_TOKEN`,
    `LEDGER_TAB_NAME`.

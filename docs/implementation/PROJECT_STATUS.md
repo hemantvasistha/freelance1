@@ -59,7 +59,7 @@ concurrent clients. Re-run after any change to the ingest path.
 ## Test suite
 
 ```bash
-py sheetflow_project/.venv/Scripts/python.exe sheetflow_engine.py --self-test
+py app/.venv/Scripts/python.exe sheetflow_engine.py --self-test
 # Ran 63 tests ... OK
 ```
 
