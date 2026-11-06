@@ -6,10 +6,11 @@ one copy of the application code:
 
     python sheetflow_engine.py --self-test   # run the full unit + HTTP test suite
     python sheetflow_engine.py --serve       # run the FastAPI server (uvicorn)
-    python sheetflow_engine.py --create-tenant --tenant-id tnt_x \
+    python sheetflow_engine.py --create-tenant --tenant-id tnt_x \\
         --business-name "Acme Traders" --home-state Maharashtra --sheet-id 1AbC...
     python sheetflow_engine.py --list-tenants
     python sheetflow_engine.py --jobs-scan     # official feeds only; a human approves each lead
+    python sheetflow_engine.py --pitch-jobs   # scan, shortlist, and email you a pitch draft per lead
 
 Setup (once):
     py -m venv sheetflow_project/.venv
@@ -31,8 +32,10 @@ import json  # noqa: E402
 
 from src.database import get_db_connection  # noqa: E402
 from src.jobs import list_leads, run_scan, set_lead_status  # noqa: E402
+from src.jobs.intake import RawListing, ScoredListing  # noqa: E402
 from src.jobs.store import ensure_schema  # noqa: E402
 from src.main import app  # noqa: E402
+from src.notifications.mailer import MailerNotConfigured, OutboundEmail, build_mailer  # noqa: E402
 from src.onboarding import list_tenants, onboard_tenant  # noqa: E402
 
 
@@ -61,6 +64,23 @@ def run_self_test() -> int:
     return 0 if result.wasSuccessful() else 1
 
 
+def _pitch_and_maybe_send(email: OutboundEmail, args: argparse.Namespace) -> None:
+    """Send the pitch if live, otherwise record it. Errors are printed, not fatal."""
+    from src.config import get_settings
+
+    settings = get_settings()
+    if settings.dry_run:
+        print(f"DRY_RUN pitch -> {email.to}: {email.subject}")
+        return
+    try:
+        mailer = build_mailer(settings)
+    except MailerNotConfigured as exc:
+        print(f"SKIPPED pitch -> {email.to}: {email.subject} ({exc})")
+        return
+    status, error = mailer.send(email)
+    print(f"PITCH {status} -> {email.to}: {email.subject}" + (f" ({error})" if error else ""))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="SheetFlow Engine — unified CLI")
     parser.add_argument("--self-test", action="store_true", help="Run all unit and HTTP integration tests")
@@ -72,6 +92,15 @@ def main() -> int:
     parser.add_argument("--retry-failed", action="store_true", help="Resend reminders whose delivery previously failed")
     parser.add_argument("--as-of", help="Override the run date (YYYY-MM-DD) for --run-daily/--run-digest")
     parser.add_argument("--owner-email", help="Owner email for the digest (--create-tenant)")
+    parser.add_argument(
+        "--pitch-jobs",
+        action="store_true",
+        help="Scan jobs, shortlist them, and email you one pitch draft per lead to forward to the client",
+    )
+    parser.add_argument(
+        "--pitch-to",
+        help="Recipient for --pitch-jobs (default: SHEETFLOW_OWNER_EMAIL or SMTP_USER)",
+    )
     parser.add_argument("--jobs-scan", action="store_true", help="Fetch, score and store job leads from official feeds")
     parser.add_argument("--jobs-list", action="store_true", help="Show stored job leads")
     parser.add_argument("--jobs-status", default="NEW", help="Filter for --jobs-list (NEW/APPROVED/SKIPPED/all)")
@@ -110,7 +139,9 @@ def main() -> int:
         ]
         if missing:
             parser.error("--create-tenant requires " + ", ".join(missing))
-        result = onboard_tenant(
+        from src.onboarding import onboard_tenant as _onboard
+
+        result = _onboard(
             args.db,
             tenant_id=args.tenant_id,
             business_name=args.business_name,
@@ -141,6 +172,69 @@ def main() -> int:
         )
         print(json.dumps(report, indent=2))
         return 1 if report.get("errors") else 0
+    if args.pitch_jobs:
+        from src.config import get_settings
+        from src.jobs.pitch import ensure_pitch_schema, render_pitch, upsert_pitch
+        from src.jobs.store import ensure_schema as ensure_job_schema
+
+        you_email = (
+            args.pitch_to
+            or get_settings().owner_email
+            or get_settings().smtp_user
+            or ""
+        )
+        if not you_email:
+            parser.error(
+                "--pitch-jobs needs a recipient: --pitch-to, or SHEETFLOW_OWNER_EMAIL/SMTP_USER in .env"
+            )
+
+        from src.database import init_db
+
+        init_db(args.db)
+        scan_report = run_scan(args.db, limit=50)
+        shortlist = scan_report.get("shortlist") or []
+
+        pitched = 0
+        with get_db_connection(args.db) as conn:
+            ensure_job_schema(conn)
+            ensure_pitch_schema(conn)
+            for item in shortlist:
+                lid = item.get("id")
+                if not lid:
+                    continue
+                lead = ScoredListing(
+                    listing=RawListing(
+                        source=item.get("source", ""),
+                        external_id=item.get("external_id", ""),
+                        title=item.get("title", ""),
+                        description=item.get("description", ""),
+                        url=item.get("url", ""),
+                        budget_min_minor=item.get("budget_min_minor"),
+                        budget_max_minor=item.get("budget_max_minor"),
+                        currency=item.get("currency", ""),
+                        posted_at=item.get("posted_at"),
+                    ),
+                    score=item.get("score", 0),
+                    capability=item.get("capability"),
+                    reasons=tuple(item.get("reasons") or ()),
+                )
+                email = render_pitch(lead, you_email)
+                upsert_pitch(conn, lid, email.subject, email.body)
+                pitched += 1
+                _pitch_and_maybe_send(email, args)
+
+        print(
+            json.dumps(
+                {
+                    "pitch_count": pitched,
+                    "scan": scan_report,
+                    "drafts_stored": True,
+                    "sent_via": "smtp" if not get_settings().dry_run else "dry_run",
+                },
+                indent=2,
+            )
+        )
+        return 0
     if args.jobs_scan:
         print(json.dumps(run_scan(args.db), indent=2))
         return 0
