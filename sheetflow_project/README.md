@@ -92,6 +92,11 @@ which silently breaks any sheet still holding the old value.
   `POST /api/v1/webhooks/razorpay` with the secret from `RAZORPAY_WEBHOOK_SECRET`.
 - **Marketplace work:** the platform pays out to your bank; nothing here is involved.
 
+## Production deploy
+
+A single-VPS runbook (systemd unit, Caddy HTTPS, nightly backup, cron) is in
+[`deploy/README.md`](../deploy/README.md).
+
 ## Unattended runs
 
 Either enable the in-process scheduler:

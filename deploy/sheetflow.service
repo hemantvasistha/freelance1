@@ -1,0 +1,26 @@
+[Unit]
+Description=SheetFlow billing API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sheetflow
+Group=sheetflow
+WorkingDirectory=/srv/sheetflow
+# Put SHEETFLOW_DB_PATH, SHEETFLOW_PDF_DIR, SHEETFLOW_ADMIN_TOKEN, SMTP_*, RAZORPAY_*
+# and DRY_RUN in this file (chmod 600, owned by sheetflow). Never commit it.
+EnvironmentFile=/srv/sheetflow/.env
+ExecStart=/srv/sheetflow/.venv/bin/python sheetflow_engine.py --serve --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+# Hardening: the service only needs its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/srv/sheetflow
+
+[Install]
+WantedBy=multi-user.target

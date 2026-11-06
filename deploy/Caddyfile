@@ -1,0 +1,9 @@
+# Caddy gets a free TLS certificate automatically; the app stays on loopback.
+billing.example.com {
+	encode zstd gzip
+	# Sheet rows are small JSON bodies; refuse anything unreasonable.
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy 127.0.0.1:8000
+}
