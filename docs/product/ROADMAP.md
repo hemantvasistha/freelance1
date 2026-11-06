@@ -16,7 +16,7 @@
 |---|---|---|
 | "The code works; the Pydantic issue only blocks tests, not usage" | False. `src/main.py` imports `src/schemas`, so the server also failed to import. Nothing ran. | Fixed in v1.0.1 |
 | Fix = add `skip_on_failure=True` at `schemas.py:130`, migrate `@validator` at `:123` | Done properly with `@field_validator`/`@model_validator`; those line numbers no longer exist. | Done |
-| "`sheetflow_engine.py` missing → rename `src/main.py` to the project root" | Renaming `main.py` would break `from src.*` imports. It is now a thin launcher that puts `sheetflow_project/` on `sys.path`. | Done |
+| "`sheetflow_engine.py` missing → rename `src/main.py` to the project root" | Renaming `main.py` would break `from src.*` imports. It is now a thin launcher that puts `app/` on `sys.path`. | Done |
 | "Add stub `triggerDunningRun()` / `requestWeeklyDigest()`" | Stubs alone would now fail: those endpoints require `X-SheetFlow-Admin-Token`. Real implementations with auth were added instead. | Done |
 | "`format_major_currency` hardcodes ₹" | Wrong — it takes a symbol. The real duplication was four `₹ if INR else CODE` ternaries, now one `currency_symbol()`. | Fixed in v1.0.2 |
 | "Set `DRY_RUN`, `SMTP_*` for email dispatch" | Those settings existed but **nothing read them**; no email was ever sent. Now real (`RecordingMailer` / `SmtpMailer`). | Fixed in v1.0.2 |
