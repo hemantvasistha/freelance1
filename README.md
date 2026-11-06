@@ -15,7 +15,7 @@ app/                     the application package (src/) and its tests
   src/                   FastAPI app, billing, dunning, reconciliation, sheets
   tests/                 66 tests, run with --self-test
 apps_script/Code.gs      the paste-into-Google-Sheets client
-site/index.html          landing page, served at /
+index.html               landing page: served at / and published to GitHub Pages
 deploy/                  systemd unit, Caddyfile, backup script, VPS runbook
 docs/                    operations, onboarding, limits, product specs
 scripts/                 deploy verification, load harnesses, restore drill
@@ -66,6 +66,11 @@ py scripts/verify_deployment.py --base-url https://your-domain \
 
 It prints PASS / BLOCKED / FAIL for every customer-path and authorization check and exits
 non-zero on any failure.
+
+The landing page is one self-contained `index.html` at the repository root, so GitHub
+Pages works with either source setting: **Deploy from a branch -> main / (root)**, or
+**GitHub Actions** using `.github/workflows/pages.yml`, which publishes that single file
+and fails the build if a placeholder contact address is still in it.
 
 ## Documentation
 

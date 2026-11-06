@@ -1,0 +1,45 @@
+name: pages
+
+# Publishes the landing page. GitHub Pages must be set to "GitHub Actions" as its
+# source for this workflow to deploy; "Deploy from a branch -> main / (root)" also
+# works, because the page is index.html at the repository root.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the static site
+        run: |
+          test -f index.html
+          mkdir -p _site
+          cp index.html _site/index.html
+          if grep -q "__SUPPORT_EMAIL__\|example\.com" _site/index.html; then
+            echo "landing page still contains a placeholder address" >&2
+            exit 1
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

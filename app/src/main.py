@@ -50,7 +50,7 @@ logger = logging.getLogger("sheetflow.scheduler")
 
 # The public landing page ships with the app so the product and its sales page are
 # deployed as one artifact instead of two places to keep in sync.
-SITE_INDEX = Path(__file__).resolve().parents[2] / "site" / "index.html"
+SITE_INDEX = Path(__file__).resolve().parents[2] / "index.html"
 
 
 async def _scheduler_loop() -> None:
@@ -199,14 +199,14 @@ def landing_page() -> HTMLResponse:
             f"{html.escape(support_email)}</a>"
             " with the subject “SheetFlow walkthrough”, or reply to any message from us.</p>"
         )
-    else:
-        contact = "<p>Contact details are given in your onboarding email.</p>"
 
     text = SITE_INDEX.read_text(encoding="utf-8")
     start_marker = "<!--CONTACT_BLOCK_START-->"
     end_marker = "<!--CONTACT_BLOCK_END-->"
-    start = text.find(start_marker)
-    end = text.find(end_marker)
+    # GitHub Pages serves the file raw, so the static block must stand on its own;
+    # only a configured address is substituted in.
+    start = text.find(start_marker) if support_email else -1
+    end = text.find(end_marker) if support_email else -1
     if start != -1 and end != -1:
         text = text[:start] + contact + text[end + len(end_marker):]
     return HTMLResponse(text)
